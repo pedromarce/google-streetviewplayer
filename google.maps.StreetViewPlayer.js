@@ -1,80 +1,50 @@
+/**
+ * Represents a google maps StreetViewPlayer.
+ */
+google.maps.StreetViewPlayer = function(config) {
 
-google.maps.LatLng.prototype.latRadians = function() {
-	return this.lat()*(Math.PI/180);
-}
+	this.config = config;
+	this.config.movieCanvas.innerHTML = "";
 
-google.maps.LatLng.prototype.lngRadians = function() {
-	return this.lng()*(Math.PI/180);
-}
-
-Array.prototype.indexOf = function(a) {
-	for(var i=0,l=this.length;i<l;i++) {
-		if(this[i]==a)
-			return i;
+	var m_sPanoClient = new google.maps.StreetViewService();
+	var m_aVertices = [];
+	var m_aFrames = [];
+	var m_iSensitivity = 15;
+	var m_iPlayspeed = 300;
+	var m_iCurrentFrame = 0;
+	var m_dDirectionsMap = null;
+	var m_dDirectionsDisplay = null;
+	var m_bDoneLoading = true;
+	var m_sCanvasStyle = [];
+	for(var i=0;i<3;i++) {
+		m_sCanvasStyle.push(this.config.movieCanvas.appendChild(document.createElement("div")).style);
 	}
-	return -1;
-}
-
-google.maps.LatLng.prototype.bearingTo = function(ll) {
-	var lat1 = this.latRadians(),lat2 = ll.latRadians();
-	var dLon = ll.lngRadians() - this.lngRadians();
-
-	return (((Math.atan2(Math.sin(dLon)*Math.cos(lat2),Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon)))*180/Math.PI)+360)%360;
-}
-
-google.maps.LatLng.prototype.distanceFrom = function(ll) {
-	return Math.sqrt(Math.pow(this.lat()-ll.lat(),2)+Math.pow(this.lng()-ll.lng(),2))
-}
-
-
-google.maps.StreetViewPlayer = new function() {
-
-	var panoClient = new google.maps.StreetViewService();
-	var aVertices = [];
-	var finalPanos = [];
-	var ratio = 1664/360;
-	var canvasStyle0 = null;
-	var canvasStyle1 = null;
-	var canvasStyle2 = null;
-	var aFrames = [];
-	var sensitivity = 15;
-	var playSpeed = 300;
-	var map = null;
-	var cF = 0;
-	var bufferedPlace = 0;
-	var doneLoading = true;
-	var mloading = 0;
-	var framesLoading = 0;
-	var totalImages = 0;
-	var marker = null;
-	var totalFrames = -1;
-	var paused = true;
-	var firstPlayed = false;
-
-	framePlayer();
-
+	var m_mMarker = null;
+	var m_iTotalFrames = 0;
+	var m_bPaused = true;
+	var m_iVerticesBack = 0;
+	var self = this;
 
 	function loadingMovie() {
-		document.getElementById("controls").style.visibility = "hidden";
-		canvasStyle0.backgroundImage = "none";
-		canvasStyle1.backgroundImage = "none";
-		canvasStyle2.backgroundImage = "none";
-		document.getElementById("draw").className = "loading";
-		setProgress(0);
+		for(var i=0;i<m_sCanvasStyle.length;i++) {
+			m_sCanvasStyle[i].backgroundImage = "none";
+		}
+		self.config.onLoading.call(this);
+		self.setProgress(0);
 	}
 
-	var verticesBack = 0;
-
 	function getPanoramaDataForVertex(vertex) {
-		panoClient.getPanoramaByLocation(vertex,sensitivity,function(panoData,status) {
-			verticesBack++;
+		m_sPanoClient.getPanoramaByLocation(vertex, m_iSensitivity, function(panoData,status) {
+			m_iVerticesBack++;
 			if(status==="OK") {
 				vertex.panoData = panoData;
+			} else {
+				vertex.panoData = null;
 			}
-			if(verticesBack === aVertices.length) {
-				for(var i=0;i<aVertices.length;i++) {
-					if(!aVertices[i].panoData) {
-						aVertices.splice(i--,1);
+			if(m_iVerticesBack === m_aVertices.length) {
+				for(var i=0, length = m_aVertices.length;i<length;i++) {
+					if(m_aVertices[i].panoData===null) {
+						m_aVertices.splice(i--,1);
 					}
 				}
 				setupFrames();
@@ -83,346 +53,142 @@ google.maps.StreetViewPlayer = new function() {
 	}
 
 	function setupFrames() {
-		for(var i=0,length=aVertices.length;i<length;i++) {
-			aFrames.push(
-				new Frame(
-					aVertices[i].panoData,
-					aVertices[i].panoData.location.pano,
-					aVertices[i].panoData.tiles.centerHeading,
-					aVertices[i].bearingTo(aVertices[Math.min(i+1,aVertices.length-1)].panoData.location.latLng)
-				)
-			)
+		for(var i=0,length=m_aVertices.length;i<length;i++) {
+			m_aFrames.push(new google.maps.StreetViewPlayer.Frame(m_aVertices[i], m_aVertices[Math.min(i+1,m_aVertices.length-1)]))
 		}
+		m_iTotalFrames = m_aFrames.length;
+		m_bDoneLoading = true;
+		self.config.onPlay.call(this);
 	}
 
-	function getDirections(aPlaces) {
-		marker = null;
-		doneLoading = false;
-		firstPlayed = true;
-		loadingMovie();
+	function getDirections() {
+		var self = this;
+		m_mMarker = null;
+		m_bDoneLoading = false;
+		loadingMovie.call(self);
 
-		function loadMovieFrames() {
-			paused = true;
-			loadingMovie();
-
-			var _this = this;
-
-			setTimeout(function() {
-				aVertices = [];
-				finalPanos = [];
-				aFrames = [];
-				framesLoading = 0;
-				totalImages = 0;
-				totalFrames = -1;
-				cF = 0;
-				doneLoading = false;
-				bufferedPlace = 0;
-				paused = false;
-				for(var i=0,length=mapMyData.length;i<300/*length*/;i++) {
-					aVertices.push(mapMyData[i]);
+		(new google.maps.DirectionsService()).route({
+			 origin:this.config.origin,
+			 destination:this.config.destination,
+			 travelMode:this.config.travelMode
+			}, function(result, status) {
+			if(status == google.maps.DirectionsStatus.OK) {
+				m_bPaused = true;
+				m_aVertices = result.routes[0].overview_path;
+				m_aFrames = [];
+				m_iTotalFrames = 0;
+				m_iCurrentFrame = 0;
+				for(var i=0,length=m_aVertices.length;i<length;i++) {
+					getPanoramaDataForVertex(m_aVertices[i]);
 				}
-				for(var i=0,length=aVertices.length;i<length;i++) {
-					getPanoramaDataForVertex(aVertices[i]);
+
+				if(m_dDirectionsMap===null) {
+					m_dDirectionsMap = new google.maps.Map(self.config.mapCanvas,{
+						zoom:14,
+						center : m_aVertices[0],
+						mapTypeId: google.maps.MapTypeId.ROADMAP
+					});
+
+					m_mMarker = new google.maps.Marker({
+						map: m_dDirectionsMap,
+						location:m_aVertices[0],
+						visible:true
+					})
 				}
-			},3000);
-		}
-
-		if(map == null) {
-			map = new google.maps.Map(document.getElementById("map_canvas"),{
-				zoom:14,
-				center : mapMyData[0],
-				mapTypeId: google.maps.MapTypeId.ROADMAP
-			});
-			
-			document.getElementById("draw").className="";
-
-			marker = new google.maps.Marker({
-				map:map,
-				location:mapMyData[0],
-				visible:true
-			})
-
-			var polyline = new google.maps.Polyline({
-				map:map,
-				path:mapMyData
-			});
-
-			loadMovieFrames();
-
-		}
-	}
-
-	function uniqueData(panoData) {
-		for(var i=0;i<aFrames.length;i++) {
-			if(aFrames[i].panoId === panoData.location.pano) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	function getImagesForCenter(center) {
-		if(center >=0 && center < 256) {
-			return [2,3,0];
-		} else if(center===256) {
-			return [0];
-		} else if(center > 256 && center < 768) {
-			return [0,1];
-		} else if(center===768) {
-			return [1];
-		} else if(center > 768 && center < 1280) {
-			return [1,2];
-		} else if(center===1280) {
-			return [2];
-		} else if(center > 1280 && center <= 1664){
-			return [2,3];
-		}
-	}
-
-	function getImageCenter(panoId,cameraYaw,linkYaw) {
-		var moveYaw = linkYaw - cameraYaw;
-		if(moveYaw < 0) {
-			moveYaw += 360;
-		} else if(moveYaw > 360) {
-			moveYaw -= 360;
-		}
-
-		var imageCenter = Math.round(896+(moveYaw*ratio));
-
-		if(imageCenter > 1664) {
-			imageCenter -= 1664;
-		}
-		return imageCenter;
-	}
-
-	function getFrameDisplayData(frame) {
-
-		var panoId = frame.panoId,cameraYaw = frame.cameraYaw,linkYaw = frame.nextYaw;
-		var imageCenter = getImageCenter(panoId,cameraYaw,linkYaw);
-		var images = getImagesForCenter(imageCenter);
-
-		var aDisplay = [{},{},{}];
-
-		for(var i=0,length=images.length;i<length;i++) {
-			var img = frame.images[i];
-			if(imageCenter >= 0 && imageCenter < 256) {
-				var diff = 384+imageCenter;
-				if(i===0) {
-					aDisplay[0].left = -diff + "px";
-					aDisplay[0].image = img.src
-				} else if(i===1) {
-					aDisplay[1].left = -diff+512 + "px";
-					aDisplay[1].width = "128px";
-					aDisplay[1].image = img.src;
-				} else if(i===2) {
-					aDisplay[2].left = -diff+640+"px";
-					aDisplay[2].image = img.src;
+				
+				if(m_dDirectionsDisplay===null) {
+					m_dDirectionsDisplay = new google.maps.DirectionsRenderer();
+					m_dDirectionsDisplay.setMap(m_dDirectionsMap);
 				}
+				m_dDirectionsDisplay.setDirections(result);
+				self.setPaused(false);
 			} else {
-				if(images.length===1) {
-					aDisplay[0].left = "0px";
-					aDisplay[0].image = img.src;
-				} else {
-					var diff = (imageCenter - ((images[0]*2+1)*256));
-					if(i===0) {
-						aDisplay[0].left = -diff+"px";
-						aDisplay[0].image = img.src;
-					} else if(i===1){
-						aDisplay[1].left = -diff+512+"px";
-						aDisplay[1].image = img.src;
-						aDisplay[2].image = "none";
-					}
-				}
+				alert("Error pulling directions for movie, please try again.");
 			}
-		}
-
-		return aDisplay;
+		})
 
 	}
 
-	function drawPano(frame) {
-		var panoId = frame.panoId,cameraYaw = frame.cameraYaw,linkYaw = frame.nextYaw;
-		var imageCenter = getImageCenter(panoId,cameraYaw,linkYaw);
-		var images = getImagesForCenter(imageCenter);
+	function drawFrame(frame) {
 
-		for(var i=0,length=images.length;i<length;i++) {
-			var img = frame.images[i];
-			if(imageCenter >= 0 && imageCenter < 256) {
-				var diff = 384+imageCenter;
-				if(i===0) {
-					canvasStyle0.left = -diff + "px";
-					canvasStyle0.backgroundImage = "url("+img.src+")";
-				} else if(i===1) {
-					canvasStyle1.left = -diff+512 + "px";
-					canvasStyle1.width = "128px";
-					canvasStyle1.backgroundImage = "url("+img.src+")";
-				} else if(i===2) {
-					canvasStyle2.left = -diff+640+"px";
-          canvasStyle2.width = (512-(-diff+640))+"px";
-					canvasStyle2.backgroundImage = "url("+img.src+")";
-				}
+		var data = frame.getDisplayData(frame);
+
+		for(var i=0,length=data.length;i<length;i++) {
+			var img = data[i];
+			if(img.image!=="none") {
+				m_sCanvasStyle[i].left = img.left;
+				m_sCanvasStyle[i].backgroundImage = "url("+img.image+")";
+				m_sCanvasStyle[i].width = img.width || "512px"
 			} else {
-				if(images.length===1) {
-					canvasStyle0.left = "0px";
-					canvasStyle0.backgroundImage = "url("+img.src+")";
-				} else {
-					var diff = (imageCenter - ((images[0]*2+1)*256));
-					if(i===0) {
-						canvasStyle0.left = -diff+"px";
-						canvasStyle0.backgroundImage = "url("+img.src+")";
-					} else if(i===1){
-						canvasStyle1.left = -diff+512+"px";
-						canvasStyle1.width = (512-(-diff+512))+"px";
-						canvasStyle1.backgroundImage = "url("+img.src+")";
-            canvasStyle2.width = "0px";
-						canvasStyle2.backgroundImage = "none";
-					}
-				}
+				m_sCanvasStyle[i].width = "0px";
 			}
 		}
 
-		marker.setPosition(frame.panoData.location.latLng);
-		//map.setCenter(frame.panoData.location.latLng);
+		m_mMarker.setPosition(frame.panoData.location.latLng);
 
 	}
 
-	function getImageUrl(panoId,x,y) {
-		return ["http://cbk0.google.com/cbk?output=tile&panoid=",panoId,"&zoom=2&x=",x,"&y=",y,"&cb_client=api&fover=0&onerr=3"].join("");
-	}
-
-	function Frame(panoData,panoId,cameraYaw,nextYaw) {
-		this.images = [];
-		totalFrames++;
-		var lImages = getImagesForCenter(getImageCenter(panoId,cameraYaw,nextYaw));
-		for(var i=0;i<lImages.length;i++) {
-			framesLoading++;
-			totalImages++;
-			var img = new Image();
-			img.loaded = false;
-			img.onload = img.onerror = function() {
-				this.loaded=true;
-				framesLoading--;
+	function framePlayer() {
+		if(m_bPaused===false) {
+			if(m_iCurrentFrame >= m_iTotalFrames ) {
+				self.setProgress(m_iTotalFrames);
+			} else if(m_bPaused===false && m_iTotalFrames > 0 && m_iCurrentFrame<=m_iTotalFrames && m_aFrames[m_iCurrentFrame].loaded ) {
+				self.setProgress(m_iCurrentFrame);
+				m_iCurrentFrame++;
 			}
-			img.src = getImageUrl(panoId,lImages[i],0);
-			this.images.push(img);
+			setTimeout(framePlayer, m_iPlayspeed);
 		}
-		this.panoData = panoData;
-		this.panoId = panoId;
-		this.cameraYaw = cameraYaw;
-		this.nextYaw = nextYaw;
-	}
-
-	function playMovie() {
-		document.getElementById("controls").style.visibility="visible";
-		document.getElementById("draw").className="";
-	}
-
-	function framePlayer(){
-		if(firstPlayed===true && doneLoading===true && cF >= totalFrames ) {
-			setProgress(totalFrames);
-		} else if(paused===false&&totalFrames>-1&&cF<=totalFrames) {
-			var currentFrameImages = aFrames[cF].images;
-			for(var i=0,length=currentFrameImages.length;i<length;i++) {
-				if(currentFrameImages[i].loaded===false) {
-					break;
-				}
-			}
-			if(i===length) {
-				setProgress(cF);
-				drawPano(aFrames[cF++]);
-			}
-		}
-		setTimeout(framePlayer,playSpeed);
 	};
 
-	function setProgress(currentFrame) {
-		if(document.getElementById("progressbar")) 
-			document.getElementById("progressbar").style.width = parseInt(100*currentFrame/totalFrames)+"%";
+	this.setSensitivity = function(sensitivity) {
+		m_iSensitivity = sensitivity;
 	}
 
-	this.restartMovie = function() {
-		cF = 0;
+	this.getSensitivity = function() {
+		return m_iSensitivity;
 	}
 
-	this.speedUpMovie = function() {
-		playSpeed-=100;
+	this.setPlaySpeed = function(playspeed) {
+		m_iPlayspeed = playspeed;
+	}
+	
+	this.getPlaySpeed = function() {
+		return m_iPlayspeed;
+	}
+
+	this.getPlayerData = function() {
+		var aData = [];
+		for(var i=0;i<m_aFrames.length;i++) {
+			aData.push(m_aFrames[i].getDisplayData());
+		}
+		return {
+			frames : aData
+		}
 	}
 
 	this.setProgress = function(newFrame) {
-		paused = true;
-		cF = newFrame;
-		paused = false;
-		document.getElementById("btn_playpause").value = "Pause"
+		m_iCurrentFrame = newFrame;
+		if(m_iCurrentFrame >=0 && m_iCurrentFrame < m_aFrames.length) {
+			drawFrame(m_aFrames[m_iCurrentFrame])
+		}
+		self.config.onProgress.call(this, parseInt(100*m_iCurrentFrame/m_iTotalFrames));
 	}
 
-	this.slowDownMovie = function() {
-		playSpeed+=100;
-	}
-
-	this.pauseMovie = function(btn) {
-		if(!paused) {
-			paused = true;
-			btn.value="Play";
-		} else {
-			paused = false;
-			btn.value="Pause";
+	this.setPaused = function(paused) {
+		m_bPaused = paused;
+		if(paused===false) {
+			framePlayer.call(self);
 		}
 	}
 
-	this.selectPopularRoute = function(sel) {
-		var o = sel.options[sel.selectedIndex];
-		document.getElementById("start").value = o.getAttribute("start");
-		document.getElementById("end").value = o.getAttribute("end");
-		paused = true;
-		this.initMovie();
-		sel.selectedIndex = 0;
-	}
-
-	this.initMovie = function() {
-		for(var i=0,length=mapMyData.length;i<length;i++) {
-			mapMyData[i] = new google.maps.LatLng(mapMyData[i].lat, mapMyData[i].lng);
-		}
-		if(firstPlayed && !doneLoading) {
-			alert("Please wait for current movie to finish loading before loading a new one.");
-			return;
-		} else if(!firstPlayed) {
-			paused = false;
-		}
-
-		canvas = document.getElementById("draw").getElementsByTagName("DIV");
-		canvasStyle0 = canvas[0].style;
-		canvasStyle1 = canvas[1].style;
-		canvasStyle2 = canvas[2].style;
-		delete canvas;
-
-		getDirections([document.getElementById("start").value,document.getElementById("end").value])
+	this.getPaused = function() {
+		return m_bPaused;
 	}
 	
 	this.getTotalFrames = function() {
-		return totalFrames;
+		return m_iTotalFrames;
 	}
 
-	this.getCurrentMovieData = function() {
-    if(!firstPlayed||!doneLoading)
-    {
-      alert('This movie is currently not done loading all data points, please wait for the movie to finish loading before downloading.');
-      return;
-    }
-		var aData = [];
-		for(var i=0;i<aFrames.length;i++) {
-			aData.push(getFrameDisplayData(aFrames[i]));
-		}
-    var f = document.createElement("form");
-    f.method="POST";
-    f.action="http://50.62.15.115/driver/";
-    var i = document.createElement("input");
-    i.type="hidden";
-    i.name="DATA";
-    i.value=$.toJSON(aData);
-    f.appendChild(i);
-    document.body.appendChild(f);
-    f.submit();
-    document.body.removeChild(f);
-	}
+	getDirections.call(this)
 
 }
