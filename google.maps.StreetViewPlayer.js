@@ -115,16 +115,16 @@ google.maps.StreetViewPlayer = function(config) {
 
 		for(var i=0,length=data.length;i<length;i++) {
 			var img = data[i];
-			if(img.image!=="none") {
-				m_sCanvasStyle[i].left = img.left;
-				m_sCanvasStyle[i].backgroundImage = "url("+img.image+")";
-				m_sCanvasStyle[i].width = img.width || "512px"
-			} else {
-				m_sCanvasStyle[i].width = "0px";
-			}
+			m_sCanvasStyle[i].left = img.left;
+			m_sCanvasStyle[i].backgroundImage = "url("+img.image+")";
+			m_sCanvasStyle[i].width = img.width || "512px"
+		}
+		
+		for(length=m_sCanvasStyle.length;i<length;i++) {
+			m_sCanvasStyle[i].width = "0px";
 		}
 
-		m_mMarker.setPosition(frame.panoData.location.latLng);
+		m_mMarker.setPosition(frame.getPosition());
 
 	}
 
@@ -132,7 +132,7 @@ google.maps.StreetViewPlayer = function(config) {
 		if(m_bPaused===false) {
 			if(m_iCurrentFrame >= m_iTotalFrames ) {
 				self.setProgress(m_iTotalFrames);
-			} else if(m_bPaused===false && m_iTotalFrames > 0 && m_iCurrentFrame<=m_iTotalFrames && m_aFrames[m_iCurrentFrame].loaded ) {
+			} else if(m_bPaused===false && m_iTotalFrames > 0 && m_iCurrentFrame<=m_iTotalFrames && m_aFrames[m_iCurrentFrame].isLoaded() ) {
 				self.setProgress(m_iCurrentFrame);
 				m_iCurrentFrame++;
 			}

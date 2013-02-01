@@ -1,112 +1,134 @@
 /**
  * Represents a google maps StreetViewPlayer Frame
+ * @param vertex The vertex which this frame will represent visually.
+ * @param nextVertex the next vertex which will be displayed after this vertex in the sequence.
  */
 google.maps.StreetViewPlayer.Frame = function(vertex, nextVertex) {
 
-	this.panoData = vertex.panoData;
-	this.panoId = this.panoData.location.pano;
-	this.cameraYaw = this.panoData.tiles.centerHeading;
-	this.nextYaw = vertex.bearingTo(nextVertex.panoData.location.latLng);
-	this.images = [];
-	this.loaded = false;
-	var thisFrame = this;
-	var lImages = this.getCanvasStyles();
+	this.m_pPanoData = vertex.panoData;
+	this.m_sPanoId = this.m_pPanoData.location.pano;
+	this.m_iCameraYaw = this.m_pPanoData.tiles.centerHeading;
+	this.m_iNextYaw = vertex.bearingTo(nextVertex.panoData.location.latLng);
+	this.m_aImages = [];
+	this.m_bLoaded = false;
 
-	for(var i=0;i<lImages.length;i++) {
-		var img = new Image();
-		img.loaded = false;
-		img.onload = img.onerror = function() {
-			this.loaded = true;
-			for(var j=0;j<thisFrame.images.length;j++) {
-				if(!thisFrame.images[j].loaded) {
-					return;
-				}
-			}
-			thisFrame.loaded = true;
-		}
-		img.src = this.getImageUrl(lImages[i], 0);
-		this.images.push(img);
+	var iMoveYaw = this.m_iNextYaw - this.m_iCameraYaw;
+	if(iMoveYaw < 0) {
+		iMoveYaw += 360;
+	} else if(iMoveYaw > 360) {
+		iMoveYaw -= 360;
+	}
+
+	var iImageCenter = (896+(iMoveYaw*(1664/360)))>>0;
+	if(iImageCenter > 1664) {
+		iImageCenter -= 1664;
+	}
+
+	this.m_iCanvasOffset = iImageCenter;
+
+	if(iImageCenter>>8===0) {
+		this.m_aCanvasStyles = [2, 3, 0];
+	} else if(iImageCenter===256) {
+		this.m_aCanvasStyles = [0];
+	} else if((iImageCenter-256)>>9===0) {
+		this.m_aCanvasStyles = [0, 1];
+	} else if(iImageCenter===768) {
+		this.m_aCanvasStyles = [1];
+	} else if((iImageCenter-768)>>9===0) {
+		this.m_aCanvasStyles = [1, 2];
+	} else if(iImageCenter===1280) {
+		this.m_aCanvasStyles = [2];
+	} else {
+		this.m_aCanvasStyles = [2, 3];
+	}
+
+	this.loadImages();
+
+}
+
+/**
+ * Loads all of the images required for the frame.
+ */
+google.maps.StreetViewPlayer.Frame.prototype.loadImages = function() {
+	var aImages = this.m_aCanvasStyles;
+	for(var i=0,lengthI=aImages.length;i<lengthI;i++) {
+		this.m_aImages.push(this.getImage(aImages[i], 0));
 	}
 }
 
-google.maps.StreetViewPlayer.Frame.prototype.getImageUrl = function(x, y) {
-	return ["http://cbk0.google.com/cbk?output=tile&panoid=", this.panoId, "&zoom=2&x=", x, "&y=", y, "&cb_client=api&fover=0&onerr=3"].join("");
+/**
+ * Constructs a string of a given url from google maps api.
+ * @param x X coordinate of the image according to google maps images.
+ * @param y Y coordinate of the image according to google maps images.
+ */
+google.maps.StreetViewPlayer.Frame.prototype.getImage = function(x, y) {
+	var iImage = new Image();
+	iImage.src = ["http://cbk0.google.com/cbk?output=tile&panoid=", this.m_sPanoId, "&zoom=2&x=", x, "&y=", y, "&cb_client=api&fover=0&onerr=3"].join("");
+	return iImage;
 }
 
+/**
+ * Determines if all of the images required to display the frame have loaded.
+ */
+google.maps.StreetViewPlayer.Frame.prototype.isLoaded = function() {
+	if(this.m_bLoaded===false) {
+		for(var i=0,length=this.m_aImages.length;i<length;i++) {
+			if(this.m_aImages[i].width===0) {
+				break;
+			}
+		}
+		if(i===length) {
+			this.m_bLoaded = true;
+		}
+	}
+	return this.m_bLoaded;
+}
+
+/**
+ * Gets the current latLng which the frame represents.
+ */
+google.maps.StreetViewPlayer.Frame.prototype.getPosition = function() {
+	return this.m_pPanoData.location.latLng;
+}
+
+/**
+ * Gets the display data for the frame.
+ * @return Array of FrameData.
+ */
 google.maps.StreetViewPlayer.Frame.prototype.getDisplayData = function() {
-
-	var panoId = this.panoId;
-	var cameraYaw = this.cameraYaw;
-	var linkYaw = this.nextYaw;
-	var imageCenter = this.getCanvasOffset();
-	var images = this.getCanvasStyles();
-
-	var aDisplay = [{},{},{}];
-
-	for(var i=0,length=images.length;i<length;i++) {
-		var img = this.images[i];
-		if(imageCenter >= 0 && imageCenter < 256) {
-			var diff = 384+imageCenter;
-			if(i===0) {
-				aDisplay[0].left = -diff + "px";
-				aDisplay[0].image = img.src
-			} else if(i===1) {
-				aDisplay[1].left = -diff+512 + "px";
-				aDisplay[1].width = "128px";
-				aDisplay[1].image = img.src;
-			} else if(i===2) {
-				aDisplay[2].left = -diff+640+"px";
-				aDisplay[2].image = img.src;
+	var iImageCenter = this.m_iCanvasOffset;
+	var aImages = this.m_aCanvasStyles;
+	if(aImages.length===3) {
+		var iDiff = 384 + iImageCenter;
+		return [
+			{
+				left : -iDiff + "px",
+				image : this.m_aImages[0].src
+			},
+			{
+				left : -iDiff+512 + "px",
+				width : "128px",
+				image : this.m_aImages[1].src
+			},
+			{
+				left : -iDiff+640+"px",
+				image : this.m_aImages[2].src
 			}
-		} else {
-			if(images.length===1) {
-				aDisplay[0].left = "0px";
-				aDisplay[0].image = img.src;
-			} else {
-				var diff = (imageCenter - ((images[0]*2+1)*256));
-				if(i===0) {
-					aDisplay[0].left = -diff+"px";
-					aDisplay[0].image = img.src;
-				} else if(i===1){
-					aDisplay[1].left = -diff+512+"px";
-					aDisplay[1].image = img.src;
-					aDisplay[2].image = "none";
-				}
-			}
-		}
-	}
-	return aDisplay;
-}
-
-google.maps.StreetViewPlayer.Frame.prototype.getCanvasOffset = function() {
-	var moveYaw = this.nextYaw - this.cameraYaw;
-	if(moveYaw < 0) {
-		moveYaw += 360;
-	} else if(moveYaw > 360) {
-		moveYaw -= 360;
-	}
-	var imageCenter = Math.round(896+(moveYaw*(1664/360)));
-	if(imageCenter > 1664) {
-		imageCenter -= 1664;
-	}
-	return imageCenter;
-}
-
-google.maps.StreetViewPlayer.Frame.prototype.getCanvasStyles = function() {
-	var center = this.getCanvasOffset();
-	if(center >=0 && center < 256) {
-		return [2,3,0];
-	} else if(center===256) {
-		return [0];
-	} else if(center > 256 && center < 768) {
-		return [0,1];
-	} else if(center===768) {
-		return [1];
-	} else if(center > 768 && center < 1280) {
-		return [1,2];
-	} else if(center===1280) {
-		return [2];
-	} else if(center > 1280 && center <= 1664){
-		return [2,3];
+		]
+	} else if(aImages.length===1) {
+		return [{
+			left : "0px",
+			image : this.m_aImages[0].src
+		}]
+	} else {
+		var iDiff = (iImageCenter - ((aImages[0]*2+1)*256));
+		return [{
+			left : -iDiff+"px",
+			image : this.m_aImages[0].src
+		},
+		{
+			left : -iDiff+512+"px",
+			image : this.m_aImages[1].src
+		}]
 	}
 }
