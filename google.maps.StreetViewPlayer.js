@@ -117,7 +117,8 @@ google.maps.StreetViewPlayer = function(config) {
 			var img = data[i];
 			m_sCanvasStyle[i].left = img.left;
 			m_sCanvasStyle[i].backgroundImage = "url("+img.image+")";
-			m_sCanvasStyle[i].width = img.width || "512px"
+			m_sCanvasStyle[i].width  = img.width || "512px"
+			m_sCanvasStyle[i].height = img.height || "512px"
 		}
 		
 		for(length=m_sCanvasStyle.length;i<length;i++) {
